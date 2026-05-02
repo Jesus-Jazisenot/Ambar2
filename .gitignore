@@ -1,0 +1,11 @@
+﻿# Credenciales — NUNCA subir al repositorio
+setup/.env
+*.env
+
+# Node
+setup/node_modules/
+setup/package-lock.json
+
+# OS
+Thumbs.db
+.DS_Store
