@@ -5,6 +5,10 @@ setup/.env
 # Node
 setup/node_modules/
 setup/package-lock.json
+node_modules/
+
+# Vercel
+.vercel/
 
 # OS
 Thumbs.db
