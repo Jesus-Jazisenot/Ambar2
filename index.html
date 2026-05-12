@@ -233,6 +233,16 @@ textarea.input{resize:vertical;min-height:80px}
   .content{padding:14px 10px}
   .topbar{padding:0 10px}
 }
+@media (max-width:640px){
+  .login-card{flex-direction:column;min-height:0 !important}
+  .login-left{width:100% !important;padding:24px 22px !important;flex-direction:row !important;align-items:center;gap:14px;justify-content:flex-start !important}
+  .login-left>div:first-child{display:flex;align-items:center;gap:12px}
+  .login-left>div:first-child>div:first-child{margin-bottom:0 !important;width:38px !important;height:38px !important;font-size:19px !important}
+  .login-left>div:first-child>div:nth-child(2){margin-bottom:0 !important;font-size:15px !important}
+  .login-left>div:first-child>div:nth-child(3){display:none}
+  .login-left-footer{display:none}
+  .login-right{padding:28px 22px !important}
+}
 </style>
 </head>
 <body>
@@ -4552,22 +4562,22 @@ function Login({onLogin}){
   }
 
   return(
-    <div style={{height:'100vh',width:'100%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{display:'flex',borderRadius:16,overflow:'hidden',boxShadow:'0 8px 40px oklch(0 0 0/0.18)',width:'min(860px,96vw)',minHeight:480}}>
+    <div className="login-wrap" style={{minHeight:'100vh',width:'100%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:12}}>
+      <div className="login-card" style={{display:'flex',borderRadius:16,overflow:'hidden',boxShadow:'0 8px 40px oklch(0 0 0/0.18)',width:'min(860px,100%)',minHeight:480}}>
         {/* Panel izquierdo */}
-        <div style={{width:300,background:'var(--navy)',flexShrink:0,padding:'48px 32px',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+        <div className="login-left" style={{width:300,background:'var(--navy)',flexShrink:0,padding:'48px 32px',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
           <div>
             <div style={{width:44,height:44,background:'var(--blue)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-serif)',color:'#fff',fontSize:22,marginBottom:20}}>T</div>
             <div style={{color:'#fff',fontWeight:700,fontSize:18,lineHeight:1.3,marginBottom:8}}>TECNM<br/>Campus Mazatlán</div>
             <div style={{color:'oklch(0.6 0.03 250)',fontSize:12,lineHeight:1.6}}>Sistema Integral<br/>AMBAR / SII</div>
           </div>
-          <div style={{color:'oklch(0.45 0.03 250)',fontSize:11}}>
+          <div className="login-left-footer" style={{color:'oklch(0.45 0.03 250)',fontSize:11}}>
             <div style={{marginBottom:6}}>Acceso restringido al personal y alumnos autorizados del Instituto.</div>
             <div>© 2025 TECNM · Todos los derechos reservados.</div>
           </div>
         </div>
         {/* Panel derecho */}
-        <div style={{flex:1,background:'var(--card)',padding:'48px 40px',display:'flex',flexDirection:'column',justifyContent:'center'}}>
+        <div className="login-right" style={{flex:1,background:'var(--card)',padding:'48px 40px',display:'flex',flexDirection:'column',justifyContent:'center'}}>
           <div style={{marginBottom:32}}>
             <div style={{fontSize:22,fontWeight:700,color:'var(--text)',marginBottom:6}}>Iniciar sesión</div>
             <div style={{fontSize:13,color:'var(--text-muted)'}}>Ingresa con tu correo institucional</div>
