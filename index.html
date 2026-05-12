@@ -190,6 +190,49 @@ textarea.input{resize:vertical;min-height:80px}
 .toast-ok{background:var(--green);color:#fff}
 .toast-err{background:var(--red);color:#fff}
 .toast-warn{background:oklch(.55 .16 65);color:#fff}
+/* ── Responsive (mobile/tablet) ── */
+.menu-btn{display:none;width:36px;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--card);align-items:center;justify-content:center;cursor:pointer;color:var(--text);padding:0;flex-shrink:0}
+.menu-btn:hover{background:var(--bg)}
+.menu-btn svg{width:18px;height:18px}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:oklch(0 0 0/.45);z-index:150;animation:fadeIn .18s ease}
+@media (max-width:900px){
+  .sidebar{position:fixed;top:0;left:0;height:100vh;height:100dvh;transform:translateX(-100%);transition:transform .25s cubic-bezier(0.4,0,0.2,1);z-index:200;box-shadow:0 4px 24px oklch(0 0 0/.25)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-backdrop.show{display:block}
+  .menu-btn{display:inline-flex}
+  .main{width:100%}
+  .topbar{padding:0 12px;gap:8px;height:50px}
+  .topbar-title{font-size:13.5px}
+  .topbar-sub{display:none}
+  .topbar-right{gap:6px}
+  .content{padding:16px 12px}
+  .kpi-grid{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+  .kpi-card{padding:14px}
+  .kpi-value{font-size:24px}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr;gap:10px}
+  .reticula-grid{grid-template-columns:repeat(3,1fr)}
+  .card-pad{padding:14px}
+  .card{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{min-width:520px}
+  th,td{padding:8px 10px;font-size:12px}
+  .modal{padding:18px;max-height:calc(100vh - 20px)}
+  .modal-overlay{padding:10px}
+  .tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex-shrink:0}
+  .search-overlay{padding-top:20px}
+  .search-box,.search-results{max-width:calc(100vw - 20px)}
+  .toast-wrap{bottom:16px;right:12px;left:12px}
+  .toast{max-width:none}
+  .asist-cell{font-size:8.5px}
+}
+@media (max-width:480px){
+  .kpi-grid{grid-template-columns:1fr;gap:10px}
+  .reticula-grid{grid-template-columns:repeat(2,1fr)}
+  .content{padding:14px 10px}
+  .topbar{padding:0 10px}
+}
 </style>
 </head>
 <body>
@@ -4593,8 +4636,9 @@ function App(){
   const [searchOpen,setSearchOpen]=useState(false);
   const [searchQ,setSearchQ]=useState('');
   const [notifCount,setNotifCount]=useState(0);
+  const [sidebarOpen,setSidebarOpen]=useState(false);
   const searchRef=useRef(null);
-  const go=(v)=>{setView(v);setKey(k=>k+1);setSearchOpen(false);setSearchQ('');};
+  const go=(v)=>{setView(v);setKey(k=>k+1);setSearchOpen(false);setSearchQ('');setSidebarOpen(false);};
 
   const fetchNotifCount=useCallback(async(idUsuario)=>{
     if(!idUsuario) return;
@@ -4768,9 +4812,13 @@ function App(){
             )}
           </div>
         )}
-        <SidebarConAuth role={role} view={view} setView={go} user={userDisplay} onLogout={handleLogout} notifCount={notifCount}/>
+        <SidebarConAuth role={role} view={view} setView={go} user={userDisplay} onLogout={handleLogout} notifCount={notifCount} open={sidebarOpen}/>
+        {sidebarOpen&&<div className="sidebar-backdrop show" onClick={()=>setSidebarOpen(false)}></div>}
         <div className="main">
           <div className="topbar">
+            <button className="menu-btn" title="Menú" onClick={()=>setSidebarOpen(o=>!o)} aria-label="Abrir menú">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/></svg>
+            </button>
             <div className="topbar-title">{TITLES[view]||view}</div>
             <div className="topbar-sub">TECNM Campus Mazatlán · ITMAZ</div>
             <div className="topbar-right">
@@ -4793,10 +4841,10 @@ function App(){
 }
 
 /* Sidebar con datos reales del usuario y botón logout */
-function SidebarConAuth({role,view,setView,user,onLogout,notifCount}){
+function SidebarConAuth({role,view,setView,user,onLogout,notifCount,open}){
   const nav=NAV[role]||NAV.alumno;
   return(
-    <div className="sidebar">
+    <div className={"sidebar"+(open?" open":"")}>
       <div className="sidebar-logo">
         <div className="logo-mark">T</div>
         <div className="logo-name">TECNM Campus</div>
