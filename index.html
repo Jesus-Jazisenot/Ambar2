@@ -1968,18 +1968,24 @@ function Lista(){
 
   async function guardarCalificaciones(){
     if(!roleId) return;
+    if(!grupoSel){window.toast('Selecciona un grupo antes de guardar.','warn');return;}
+    const aGuardar=grades.filter(a=>a.final!==''&&a.final!=null&&a.id_inscripcion);
+    if(aGuardar.length===0){window.toast('No hay calificaciones capturadas para guardar.','warn');return;}
+    const fuera=aGuardar.filter(a=>{const n=parseFloat(a.final);return isNaN(n)||n<0||n>10;});
+    if(fuera.length>0){window.toast('Hay calificaciones fuera del rango 0–10. Corrígelas antes de guardar.','warn',5000);return;}
     setSaveMsg('Guardando…');
     const results=await Promise.all(
-      grades
-        .filter(a=>a.final!==''&&a.final!=null&&a.id_inscripcion)
-        .map(a=>sb.rpc('capturar_calificacion_final',{
+      aGuardar.map(a=>sb.rpc('capturar_calificacion_final',{
           p_id_inscripcion:a.id_inscripcion,
           p_calificacion:parseFloat(a.final),
           p_id_docente:roleId,
         }))
     );
     const saved=results.filter(({data:r})=>r?.resultado==='OK').length;
+    const fail=results.length-saved;
     setSaveMsg(`${saved} calificación(es) guardada(s).`);
+    if(fail>0) window.toast(fail+' calificación(es) no se pudieron guardar (revisa permisos o datos).','error',5000);
+    else window.toast(saved+' calificación(es) guardada(s).','ok');
   }
 
   const GradeCell=({val})=>val!=null
@@ -2599,7 +2605,8 @@ function Grupos(){
   };
 
   const saveNew=async()=>{
-    if(!form.id_materia||!form.id_docente||!form.id_salon||!form.id_periodo){setMsg('Completa todos los campos.');return;}
+    if(!form.id_materia||!form.id_docente||!form.id_salon||!form.id_periodo){setMsg('Selecciona materia, docente, salón y periodo (todos obligatorios).');return;}
+    if(!form.cupo_max||isNaN(parseInt(form.cupo_max))||parseInt(form.cupo_max)<1){setMsg('El cupo máximo debe ser un número mayor o igual a 1.');return;}
     setSaving(true);
     const mat=materias.find(m=>m.id_materia===parseInt(form.id_materia));
     const per=periodos.find(p=>p.id_periodo===parseInt(form.id_periodo));
@@ -2620,7 +2627,8 @@ function Grupos(){
   };
 
   const saveEdit=async()=>{
-    if(!form.id_materia||!form.id_docente||!form.id_salon||!form.id_periodo){setMsg('Completa todos los campos.');return;}
+    if(!form.id_materia||!form.id_docente||!form.id_salon||!form.id_periodo){setMsg('Selecciona materia, docente, salón y periodo (todos obligatorios).');return;}
+    if(!form.cupo_max||isNaN(parseInt(form.cupo_max))||parseInt(form.cupo_max)<1){setMsg('El cupo máximo debe ser un número mayor o igual a 1.');return;}
     setSaving(true);
     const {error}=await sb.from('grupos').update({
       id_materia:parseInt(form.id_materia),
