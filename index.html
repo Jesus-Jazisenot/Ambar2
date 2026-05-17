@@ -2644,17 +2644,21 @@ function Grupos(){
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Materia *</label>
-          <select className="input" value={form.id_materia} onChange={e=>setForm(f=>({...f,id_materia:e.target.value}))}>
-            <option value="">Selecciona…</option>
-            {materias.map(m=><option key={m.id_materia} value={m.id_materia}>{m.clave} — {m.nombre}</option>)}
-          </select>
+          <input className="input" list="dl-materias" placeholder="Escribe o elige…"
+            value={form._matText!==undefined?form._matText:(()=>{const m=materias.find(x=>String(x.id_materia)===String(form.id_materia));return m?m.clave+' — '+m.nombre:'';})()}
+            onChange={e=>{const v=e.target.value;const found=materias.find(x=>(x.clave+' — '+x.nombre)===v);setForm(f=>({...f,_matText:v,id_materia:found?found.id_materia:''}));}}/>
+          <datalist id="dl-materias">
+            {materias.map(m=><option key={m.id_materia} value={m.clave+' — '+m.nombre}/>)}
+          </datalist>
         </div>
         <div className="form-group">
           <label className="form-label">Docente *</label>
-          <select className="input" value={form.id_docente} onChange={e=>setForm(f=>({...f,id_docente:e.target.value}))}>
-            <option value="">Selecciona…</option>
-            {docentes.map(d=><option key={d.id_docente} value={d.id_docente}>{d.usuarios?.nombres} {d.usuarios?.apellido_pat}</option>)}
-          </select>
+          <input className="input" list="dl-docentes" placeholder="Escribe o elige…"
+            value={form._docText!==undefined?form._docText:(()=>{const d=docentes.find(x=>String(x.id_docente)===String(form.id_docente));return d?((d.usuarios?.nombres||'')+' '+(d.usuarios?.apellido_pat||'')).trim():'';})()}
+            onChange={e=>{const v=e.target.value;const found=docentes.find(x=>((x.usuarios?.nombres||'')+' '+(x.usuarios?.apellido_pat||'')).trim()===v.trim());setForm(f=>({...f,_docText:v,id_docente:found?found.id_docente:''}));}}/>
+          <datalist id="dl-docentes">
+            {docentes.map(d=><option key={d.id_docente} value={((d.usuarios?.nombres||'')+' '+(d.usuarios?.apellido_pat||'')).trim()}/>)}
+          </datalist>
         </div>
       </div>
       <div className="form-row">
@@ -4009,7 +4013,7 @@ function ReticulaAdmin(){
           <div style={{fontWeight:600,fontSize:14.5}}>Administrar Retícula</div>
           {plan?(
             <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>
-              {plan.carreras?.clave||''} {plan.carreras?.nombre||''} · Plan {plan.clave} · {materias.length} materias · {totalCred} créditos
+              {plan.carreras?.clave||''} {plan.carreras?.nombre||''} · Plan {plan.clave_plan} · {materias.length} materias · {totalCred} créditos
             </div>
           ):<div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Selecciona un plan</div>}
         </div>
