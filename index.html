@@ -3717,7 +3717,12 @@ function InscripcionesCtrl(){
   const [insc,setInsc]=useState([]);
   const [loading,setLoading]=useState(true);
 
-  const fmtFecha=d=>d?new Date(d+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—';
+  const fmtFecha=d=>{
+    if(!d) return '—';
+    const s=String(d);
+    const dt=new Date(/^\d{4}-\d{2}-\d{2}$/.test(s)?s+'T12:00:00':s);
+    return isNaN(dt.getTime())?'—':dt.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  };
 
   const load=async()=>{
     setLoading(true);
