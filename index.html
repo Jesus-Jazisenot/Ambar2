@@ -2083,8 +2083,27 @@ function Lista(){
 function Tutorias(){
   const {roleId}=useContext(PerfilCtx);
   const [notes,setNotes]=useState({});
+  const [fechas,setFechas]=useState({});
   const [expanded,setExpanded]=useState(null);
   const [alumnos,setAlumnos]=useState([]);
+  const [ses,setSes]=useState({});
+  const [saving,setSaving]=useState(null);
+  const today=new Date().toISOString().slice(0,10);
+
+  const loadSes=useCallback(async()=>{
+    if(!roleId) return;
+    const {data}=await sb.from('tutorias_sesiones')
+      .select('fecha,tutorias_asignacion!inner(id_alumno,id_tutor)')
+      .eq('tutorias_asignacion.id_tutor',roleId);
+    const m={};
+    (data||[]).forEach(r=>{
+      const idA=r.tutorias_asignacion?.id_alumno;if(idA==null)return;
+      if(!m[idA]) m[idA]={n:0,ult:null};
+      m[idA].n++;
+      if(!m[idA].ult||r.fecha>m[idA].ult) m[idA].ult=r.fecha;
+    });
+    setSes(m);
+  },[roleId]);
 
   useEffect(()=>{
     let ok=true;
@@ -2096,9 +2115,27 @@ function Tutorias(){
         faltas:a.faltas_total||0,riesgo:a.nivel_riesgo,
         materiasRep:a.materias_reprobadas||0,
       })));
+      if(ok) await loadSes();
     })();
     return()=>{ok=false;};
-  },[]);
+  },[loadSes]);
+
+  async function registrarReunion(a){
+    const fecha=fechas[a.id]||today;
+    setSaving(a.id);
+    const {data,error}=await sb.rpc('agendar_tutoria',{
+      p_id_alumno:a.id,p_fecha:fecha,p_notas:notes[a.id]||null,p_nivel:a.riesgo||'bajo',
+    });
+    setSaving(null);
+    if(error){window.toast('Error: '+error.message,'error');return;}
+    if(data&&data.resultado&&data.resultado!=='OK'){
+      window.toast(data.mensaje||'No se pudo registrar la reunión.','warn',5000);
+      return;
+    }
+    window.toast(data&&data.mensaje?data.mensaje:'Reunión de tutoría registrada.','ok');
+    setNotes(n=>({...n,[a.id]:''}));
+    await loadSes();
+  }
 
   const rColors={alto:'var(--red)',medio:'var(--amber)',bajo:'var(--green)'};
   const rChips={alto:'chip-red',medio:'chip-amber',bajo:'chip-green'};
@@ -2136,12 +2173,13 @@ function Tutorias(){
                 <div style={{background:'var(--bg)',borderRadius:7,padding:'8px 10px',fontSize:11.5}}><strong>Promedio general:</strong> {a.promedio}</div>
                 <div style={{background:'var(--bg)',borderRadius:7,padding:'8px 10px',fontSize:11.5}}><strong>Faltas acumuladas:</strong> {a.faltas}</div>
                 <div style={{background:'var(--bg)',borderRadius:7,padding:'8px 10px',fontSize:11.5}}><strong>Mat. reprobadas:</strong> {a.materiasRep}</div>
-                <div style={{background:'var(--bg)',borderRadius:7,padding:'8px 10px',fontSize:11.5}}><strong>Próxima reunión:</strong> Por agendar</div>
+                <div style={{background:'var(--bg)',borderRadius:7,padding:'8px 10px',fontSize:11.5}}><strong>Reuniones registradas:</strong> {ses[a.id]?ses[a.id].n:0}{ses[a.id]&&ses[a.id].ult?' · última '+ses[a.id].ult:''}</div>
               </div>
               <label className="form-label">Nota de seguimiento</label>
               <textarea className="input" style={{marginBottom:8,minHeight:70}} placeholder="Escribe observaciones sobre el alumno..." value={notes[a.id]||''} onChange={e=>setNotes(n=>({...n,[a.id]:e.target.value}))}/>
-              <div style={{display:'flex',gap:8}}>
-                <button className="btn btn-primary btn-sm" onClick={()=>window.toast('Reunión de tutoría registrada','ok')}>Registrar reunión</button>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <input type="date" className="input" style={{maxWidth:160}} value={fechas[a.id]||today} onChange={e=>setFechas(f=>({...f,[a.id]:e.target.value}))}/>
+                <button className="btn btn-primary btn-sm" onClick={()=>registrarReunion(a)} disabled={saving===a.id}>{saving===a.id?'Registrando…':'Registrar reunión'}</button>
                 <button className="btn btn-ghost btn-sm" onClick={()=>window.toast('Notificación enviada al coordinador de tutorías','ok')}>Notificar a tutor</button>
                 <button className="btn btn-ghost btn-sm" onClick={()=>window.toast('Alumno canalizado al Departamento de Estudios y Movilidad Estudiantil','ok')}>Canalizar a DEMS</button>
               </div>
