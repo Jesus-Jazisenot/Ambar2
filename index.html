@@ -251,6 +251,7 @@ textarea.input{resize:vertical;min-height:80px}
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useContext,useMemo} = React;
 
@@ -3625,14 +3626,58 @@ function Notificaciones(){
 }
 
 /* ── COLA DE CONSTANCIAS (Serv. Escolares) ────────────── */
+async function generarConstanciaPDF(item){
+  const J=window.jspdf&&window.jspdf.jsPDF;
+  if(!J) throw new Error('Generador de PDF no disponible (jsPDF no cargó).');
+  const u=item.alumnos&&item.alumnos.usuarios;
+  const nombre=u?((u.nombres||'')+' '+(u.apellido_pat||'')).trim():'—';
+  const matricula=item.alumnos&&item.alumnos.matricula||'—';
+  const carrera=item.alumnos&&item.alumnos.carreras&&item.alumnos.carreras.nombre||'—';
+  const tipo=item.tipos_constancia&&item.tipos_constancia.nombre||'Constancia';
+  const folio=String(item.id_solicitud).padStart(6,'0');
+  const hoy=new Date().toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
+
+  const doc=new J({unit:'mm',format:'a4'});
+  const W=210;
+  doc.setFont('helvetica','bold');doc.setFontSize(15);
+  doc.text('TECNOLÓGICO NACIONAL DE MÉXICO',W/2,24,{align:'center'});
+  doc.setFontSize(13);
+  doc.text('Instituto Tecnológico de Mazatlán',W/2,32,{align:'center'});
+  doc.setDrawColor(30,64,120);doc.setLineWidth(0.6);doc.line(25,38,W-25,38);
+  doc.setFontSize(17);
+  doc.text(tipo.toUpperCase(),W/2,58,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(11.5);
+  const cuerpo='El Departamento de Servicios Escolares HACE CONSTAR que el(la) C. '+nombre+
+    ', con número de control '+matricula+', es alumno(a) de la carrera de '+carrera+
+    ' en este Instituto, y se expide la presente '+tipo+' a petición del(la) interesado(a) '+
+    'para los fines que a este(a) convengan.';
+  const lineas=doc.splitTextToSize(cuerpo,W-50);
+  doc.text(lineas,25,78,{align:'left',lineHeightFactor:1.6});
+  doc.text('Mazatlán, Sinaloa, a '+hoy+'.',25,78+lineas.length*7+16);
+  doc.setFontSize(10.5);
+  doc.text('A T E N T A M E N T E',W/2,180,{align:'center'});
+  doc.line(70,205,W-70,205);
+  doc.text('Departamento de Servicios Escolares',W/2,211,{align:'center'});
+  doc.setFontSize(9);doc.setTextColor(120);
+  doc.text('Folio: '+folio+'   ·   Documento generado electrónicamente por el Sistema AMBAR/SII',W/2,285,{align:'center'});
+
+  const blob=doc.output('blob');
+  const path=folio+'.pdf';
+  const {error:upErr}=await sb.storage.from('constancias').upload(path,blob,{upsert:true,contentType:'application/pdf'});
+  if(upErr) throw new Error(upErr.message||'No se pudo subir el PDF.');
+  const {data:pub}=sb.storage.from('constancias').getPublicUrl(path);
+  return pub&&pub.publicUrl;
+}
+
 function ColaConstancias(){
   const [items,setItems]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [procesando,setProcesando]=useState(null);
 
   const load=async()=>{
     setLoading(true);
     const {data}=await sb.from('solicitudes_constancia')
-      .select('id_solicitud,fecha_sol,estado,urgente,tipos_constancia(nombre),alumnos(matricula,usuarios(nombres,apellido_pat))')
+      .select('id_solicitud,fecha_sol,fecha_proc,estado,urgente,url_pdf,tipos_constancia(nombre),alumnos(matricula,carreras(nombre,clave),usuarios(nombres,apellido_pat))')
       .order('urgente',{ascending:false})
       .order('fecha_sol',{ascending:false})
       .limit(100);
@@ -3642,10 +3687,25 @@ function ColaConstancias(){
   useEffect(()=>{load();},[]);
 
   const act=async(id,st)=>{
-    const {error}=await sb.from('solicitudes_constancia').update({estado:st,fecha_proc:new Date().toISOString()}).eq('id_solicitud',id);
-    if(error){window.toast('Error: '+error.message,'err');return;}
-    window.toast(st==='lista'?'Constancia aprobada':'Solicitud rechazada',st==='lista'?'ok':'warn');
-    load();
+    const item=items.find(i=>i.id_solicitud===id);
+    setProcesando(id);
+    try{
+      if(st==='lista'){
+        let url=null;
+        try{ url=await generarConstanciaPDF(item); }
+        catch(e){ window.toast('No se pudo generar el PDF: '+e.message,'error',5000); setProcesando(null); return; }
+        const {error}=await sb.from('solicitudes_constancia')
+          .update({estado:'lista',fecha_proc:new Date().toISOString(),url_pdf:url}).eq('id_solicitud',id);
+        if(error){window.toast('Error: '+error.message,'error');setProcesando(null);return;}
+        window.toast('Constancia aprobada · PDF generado','ok');
+      } else {
+        const {error}=await sb.from('solicitudes_constancia')
+          .update({estado:st,fecha_proc:new Date().toISOString()}).eq('id_solicitud',id);
+        if(error){window.toast('Error: '+error.message,'error');setProcesando(null);return;}
+        window.toast('Solicitud rechazada','warn');
+      }
+      await load();
+    }finally{ setProcesando(null); }
   };
 
   const fmtDate=d=>d?new Date(d).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):'—';
@@ -3679,8 +3739,8 @@ function ColaConstancias(){
                   <div style={{fontSize:12,color:'var(--text-muted)'}}>{item.tipos_constancia?.nombre||'—'} · Mat. {mat} · {fmtDate(item.fecha_sol)}</div>
                 </div>
                 <div style={{display:'flex',gap:6}}>
-                  <button className="btn btn-primary btn-sm" onClick={()=>act(item.id_solicitud,'lista')}>Aprobar</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>act(item.id_solicitud,'rechazada')}>Rechazar</button>
+                  <button className="btn btn-primary btn-sm" disabled={procesando===item.id_solicitud} onClick={()=>act(item.id_solicitud,'lista')}>{procesando===item.id_solicitud?'Generando…':'Aprobar'}</button>
+                  <button className="btn btn-danger btn-sm" disabled={procesando===item.id_solicitud} onClick={()=>act(item.id_solicitud,'rechazada')}>Rechazar</button>
                 </div>
               </div>
             );
@@ -3689,7 +3749,7 @@ function ColaConstancias(){
         {done.length>0&&<>
           <div className="section-title" style={{margin:'16px 0 10px'}}>{ic.check} Procesadas</div>
           <div className="card"><table>
-            <thead><tr><th>Matrícula</th><th>Alumno</th><th>Tipo</th><th>Fecha</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Matrícula</th><th>Alumno</th><th>Tipo</th><th>Fecha</th><th>Estado</th><th>PDF</th></tr></thead>
             <tbody>{done.map(item=>{
               const nombre=item.alumnos?.usuarios?item.alumnos.usuarios.apellido_pat+', '+item.alumnos.usuarios.nombres:'—';
               const ok=item.estado==='lista'||item.estado==='entregada';
@@ -3700,6 +3760,7 @@ function ColaConstancias(){
                   <td>{item.tipos_constancia?.nombre||'—'}</td>
                   <td>{fmtDate(item.fecha_sol)}</td>
                   <td><span className={'chip '+(ok?'chip-green':'chip-red')} style={{fontSize:10}}>{ok?'Aprobada':'Rechazada'}</span></td>
+                  <td>{item.url_pdf?<a href={item.url_pdf} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)',fontSize:11,textDecoration:'none'}}>⬇ Descargar</a>:<span style={{color:'var(--text-muted)',fontSize:11}}>—</span>}</td>
                 </tr>
               );
             })}</tbody>

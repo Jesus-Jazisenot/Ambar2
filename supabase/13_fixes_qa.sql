@@ -97,3 +97,35 @@ EXCEPTION WHEN OTHERS THEN
 END; $$;
 
 GRANT EXECUTE ON FUNCTION public.agendar_tutoria(int,date,text,text,text) TO authenticated;
+
+-- ---------------------------------------------------------
+-- FIX: la constancia no tenia PDF descargable. Se crea un
+-- bucket de Storage publico 'constancias'. El frontend (rol
+-- serv_escolares/admin) genera el PDF con jsPDF al aprobar,
+-- lo sube aqui y guarda la URL en solicitudes_constancia.url_pdf;
+-- el alumno la descarga desde "Mis solicitudes".
+-- ---------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('constancias','constancias', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+DROP POLICY IF EXISTS constancias_public_read ON storage.objects;
+CREATE POLICY constancias_public_read ON storage.objects
+  FOR SELECT TO public
+  USING (bucket_id = 'constancias');
+
+DROP POLICY IF EXISTS constancias_staff_write ON storage.objects;
+CREATE POLICY constancias_staff_write ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'constancias' AND public.auth_rol() IN ('admin','serv_escolares'));
+
+DROP POLICY IF EXISTS constancias_staff_update ON storage.objects;
+CREATE POLICY constancias_staff_update ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'constancias' AND public.auth_rol() IN ('admin','serv_escolares'))
+  WITH CHECK (bucket_id = 'constancias' AND public.auth_rol() IN ('admin','serv_escolares'));
+
+DROP POLICY IF EXISTS constancias_staff_delete ON storage.objects;
+CREATE POLICY constancias_staff_delete ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'constancias' AND public.auth_rol() IN ('admin','serv_escolares'));
