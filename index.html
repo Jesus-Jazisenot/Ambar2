@@ -1342,21 +1342,44 @@ function Asistencias({role}){
 }
 
 /* ── HORARIO ──────────────────────────────────────────── */
-function Horario(){
+function Horario({role}){
   const {roleId}=useContext(PerfilCtx);
-  const [blocks,setBlocks]=useState(HORARIO_BLOCKS);
+  const [blocks,setBlocks]=useState([]);
   const [periodo,setPeriodo]=useState('2025-A');
+  const [vacio,setVacio]=useState(false);
   const PALETTE=['oklch(0.52 0.18 245)','oklch(0.62 0.14 145)','oklch(0.72 0.16 65)','oklch(0.60 0.18 20)','oklch(0.55 0.16 290)','oklch(0.60 0.13 195)'];
 
   useEffect(()=>{
     if(!roleId) return;
     let ok=true;
+    const toSlot=t=>parseInt(t.split(':')[0])-7;
     (async()=>{
+      if(role==='docente'){
+        // El horario del docente sale de los grupos que imparte, NO de v_horario_alumno
+        const {data}=await sb.from('horarios_grupo')
+          .select('dia_semana,hora_inicio,hora_fin,salones(nombre),grupos!inner(id_docente,materias(nombre,clave),periodos(clave))')
+          .eq('grupos.id_docente',roleId);
+        if(!ok) return;
+        if(!data||data.length===0){setVacio(true);return;}
+        const colorMap={};let ci=0;
+        data.forEach(r=>{const k=r.grupos?.materias?.clave||r.grupos?.materias?.nombre;if(k&&!colorMap[k])colorMap[k]=PALETTE[ci++%PALETTE.length];});
+        const bs=data.map(r=>({
+          day:r.dia_semana-1,
+          start:toSlot(r.hora_inicio),
+          span:toSlot(r.hora_fin)-toSlot(r.hora_inicio),
+          name:r.grupos?.materias?.nombre||'—',
+          room:r.salones?.nombre||'',
+          color:colorMap[r.grupos?.materias?.clave||r.grupos?.materias?.nombre]||PALETTE[0],
+        }));
+        setBlocks(bs);setVacio(false);
+        const per=data[0]?.grupos?.periodos?.clave;if(per)setPeriodo(per);
+        return;
+      }
       const {data}=await sb.from('v_horario_alumno').select('*').eq('id_alumno',roleId);
-      if(!ok||!data?.length) return;
+      if(!ok) return;
+      if(!data||data.length===0){setVacio(true);return;}
       const colorMap={};let ci=0;
       data.forEach(r=>{if(!colorMap[r.clave_materia])colorMap[r.clave_materia]=PALETTE[ci++%PALETTE.length];});
-      const toSlot=t=>parseInt(t.split(':')[0])-7;
       const bs=data.map(r=>({
         day:r.dia_semana-1,
         start:toSlot(r.hora_inicio),
@@ -1365,10 +1388,10 @@ function Horario(){
         room:r.salon,
         color:colorMap[r.clave_materia],
       }));
-      if(ok){setBlocks(bs);if(data[0])setPeriodo(data[0].periodo);}
+      setBlocks(bs);setVacio(false);if(data[0])setPeriodo(data[0].periodo);
     })();
     return()=>{ok=false;};
-  },[roleId]);
+  },[roleId,role]);
 
   const days=['Lunes','Martes','Miércoles','Jueves','Viernes'];
   const times=['07:00','08:00','09:00','10:00','11:00','12:00','13:00'];
@@ -1380,6 +1403,11 @@ function Horario(){
         <div style={{fontWeight:600,fontSize:14.5}}>Horario de clases</div>
         <span className="chip chip-blue">Ciclo {periodo}</span>
       </div>
+      {(vacio||blocks.length===0)?(
+        <div className="card card-pad" style={{textAlign:'center',color:'var(--text-muted)'}}>
+          {role==='docente'?'No tienes grupos con horario asignado en este periodo.':'No tienes materias con horario asignado en este periodo.'}
+        </div>
+      ):(
       <div className="card" style={{overflow:'hidden'}}>
         <div style={{display:'grid',gridTemplateColumns:'55px repeat(5,1fr)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',background:'var(--card)'}}>
           <div style={{background:'var(--bg)',padding:8,fontSize:10.5,fontWeight:600,textAlign:'center',color:'var(--text-mid)',borderBottom:'1px solid var(--border)',borderRight:'1px solid var(--border)'}}></div>
@@ -1403,6 +1431,7 @@ function Horario(){
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -2320,19 +2349,26 @@ function Alumnos(){
   });
 
   const saveNew=async()=>{
-    const n=form.nombres.trim(),ap=form.apellido_pat.trim(),mat=form.matricula.trim(),em=form.email.trim();
-    if(!n||!ap||!mat||!em||!form.password||!form.id_carrera){
+    const n=form.nombres.trim(),ap=form.apellido_pat.trim();
+    if(!n||!ap||!form.password||!form.id_carrera){
       setMsg('Todos los campos marcados con * son obligatorios.');return;
     }
-    if(!/^\d{5,15}$/.test(mat)){setMsg('Matrícula inválida: solo dígitos, entre 5 y 15 caracteres.');return;}
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)){setMsg('Email con formato inválido.');return;}
     if(form.password.length<8){setMsg('La contraseña debe tener al menos 8 caracteres.');return;}
     if(!/[0-9]/.test(form.password)){setMsg('La contraseña debe contener al menos un número.');return;}
     setSaving(true);
     try{
+      // 0. Generar matrícula única automáticamente: {AA año ingreso}{secuencial 6 díg}
+      const yy=String(new Date((form.fecha_ingreso||today)+'T00:00:00').getFullYear()).slice(-2);
+      const {data:existMat,error:matErr}=await sb.from('alumnos').select('matricula');
+      if(matErr){setMsg('No se pudo generar la matrícula: '+matErr.message);setSaving(false);return;}
+      const taken=new Set((existMat||[]).map(r=>String(r.matricula)));
+      let seq=1,mat='';
+      do{ mat=yy+String(seq).padStart(6,'0'); seq++; }while(taken.has(mat)&&seq<1000000);
+      const em=mat+'@mazatlan.tecnm.mx';
+
       // 1. Crear cuenta Auth vía /api/admin-create-user (el SERVICE_KEY vive solo en Vercel)
       const {data:authData,error:authErr}=await adminApi('/api/admin-create-user',{
-        email:form.email,password:form.password,
+        email:em,password:form.password,
       });
       if(authErr){setMsg('Error al crear cuenta: '+authErr.message);setSaving(false);return;}
       const uid=authData && authData.uid;
@@ -2348,8 +2384,8 @@ function Alumnos(){
 
       // 3. Insertar en usuarios
       const {data:uData,error:uErr}=await sb.from('usuarios').insert({
-        nombres:form.nombres,apellido_pat:form.apellido_pat,apellido_mat:form.apellido_mat||null,
-        email:form.email,id_rol:rolData.id_rol,supabase_uid:uid,
+        nombres:n,apellido_pat:ap,apellido_mat:form.apellido_mat||null,
+        email:em,id_rol:rolData.id_rol,supabase_uid:uid,
       }).select().single();
       if(uErr){await rollback('Error en tabla usuarios: '+uErr.message);return;}
 
@@ -2359,7 +2395,7 @@ function Alumnos(){
       // 5. Insertar en alumnos
       const alumnoInsert={
         id_usuario:uData.id_usuario,
-        matricula:form.matricula,
+        matricula:mat,
         semestre_actual:parseInt(form.semestre_actual),
         id_carrera:parseInt(form.id_carrera),
         fecha_ingreso:form.fecha_ingreso,
@@ -2372,7 +2408,7 @@ function Alumnos(){
       }
 
       setShowNew(false);setForm(blankForm);setMsg('');
-      window.toast('Alumno creado correctamente','ok');
+      window.toast('Alumno creado · Matrícula '+mat,'ok',5000);
       load();
     }catch(e){setMsg('Error inesperado: '+e.message);}
     setSaving(false);
@@ -2398,8 +2434,8 @@ function Alumnos(){
               <input className="input" placeholder="Hernández" value={form.apellido_mat} onChange={e=>setForm(f=>({...f,apellido_mat:e.target.value}))}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Matrícula / N° control *</label>
-              <input className="input" placeholder="21310010" value={form.matricula} onChange={e=>setForm(f=>({...f,matricula:e.target.value,email:e.target.value?e.target.value+'@mazatlan.tecnm.mx':f.email}))}/>
+              <label className="form-label">Matrícula / N° control</label>
+              <input className="input" value="Se genera automáticamente" readOnly disabled style={{color:'var(--text-muted)',fontStyle:'italic'}}/>
             </div>
           </div>
           <div className="form-row">
@@ -2417,9 +2453,9 @@ function Alumnos(){
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Email institucional *</label>
-              <input className="input" type="email" placeholder="se genera con la matricula" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/>
-              {form.matricula&&<span style={{fontSize:10,color:'var(--green)',marginTop:2,display:'block'}}>Generado automaticamente</span>}
+              <label className="form-label">Email institucional</label>
+              <input className="input" value="matrícula@mazatlan.tecnm.mx" readOnly disabled style={{color:'var(--text-muted)',fontStyle:'italic'}}/>
+              <span style={{fontSize:10,color:'var(--text-muted)',marginTop:2,display:'block'}}>Se genera a partir de la matrícula</span>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha de ingreso *</label>
@@ -3572,7 +3608,8 @@ function ColaConstancias(){
 
   const fmtDate=d=>d?new Date(d).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}):'—';
   const pending=items.filter(i=>i.estado==='pendiente'||i.estado==='en_proceso');
-  const done=items.filter(i=>i.estado!=='pendiente'&&i.estado!=='en_proceso');
+  const done=items.filter(i=>i.estado!=='pendiente'&&i.estado!=='en_proceso')
+    .sort((a,b)=>new Date(b.fecha_proc||b.fecha_sol)-new Date(a.fecha_proc||a.fecha_sol));
 
   return(
     <div className="page-enter">
@@ -4763,7 +4800,7 @@ function App(){
       case 'reticula': return <Reticula/>;
       case 'kardex': return <Kardex/>;
       case 'asistencias': return <Asistencias role={role}/>;
-      case 'horario': return <Horario/>;
+      case 'horario': return <Horario role={role}/>;
       case 'constancias': return <Constancias/>;
       case 'adeudos': return <Adeudos/>;
       case 'evalDocente': return <EvalDocente/>;
