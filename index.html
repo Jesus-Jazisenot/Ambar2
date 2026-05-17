@@ -163,9 +163,9 @@ textarea.input{resize:vertical;min-height:80px}
 @keyframes countUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .count-anim{animation:countUp .6s cubic-bezier(0.4,0,0.2,1) forwards}
 /* Modal */
-.modal-overlay{position:fixed;inset:0;background:oklch(0 0 0/.45);display:flex;align-items:center;justify-content:center;z-index:999;animation:fadeIn .18s ease;padding:20px}
+.modal-overlay{position:fixed;inset:0;background:oklch(0 0 0/.45);display:flex;align-items:flex-start;justify-content:center;z-index:999;animation:fadeIn .18s ease;padding:20px;overflow-y:auto}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.modal{background:var(--card);border-radius:14px;padding:26px;width:100%;max-width:520px;box-shadow:0 24px 64px oklch(0 0 0/.28);animation:modalIn .22s cubic-bezier(0.4,0,0.2,1);max-height:calc(100vh - 40px);overflow-y:auto}
+.modal{background:var(--card);border-radius:14px;padding:26px;width:100%;max-width:520px;box-shadow:0 24px 64px oklch(0 0 0/.28);animation:modalIn .22s cubic-bezier(0.4,0,0.2,1);margin:auto}
 @keyframes modalIn{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 .modal-wide{max-width:660px}
 .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
@@ -216,7 +216,7 @@ textarea.input{resize:vertical;min-height:80px}
   .card{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{min-width:520px}
   th,td{padding:8px 10px;font-size:12px}
-  .modal{padding:18px;max-height:calc(100vh - 20px)}
+  .modal{padding:18px}
   .modal-overlay{padding:10px}
   .tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;-webkit-overflow-scrolling:touch}
   .tabs::-webkit-scrollbar{display:none}
@@ -643,6 +643,8 @@ function Dashboard({role}){
   const [resumen,setResumen]=useState(null);
   /* ── KPIs institucionales ── */
   const [kpis,setKpis]=useState({alumnos_activos:0,materias_abiertas:0,promedio_general:0,docentes_activos:0,constancias_pendientes:0,bajas_pendientes:0,ingresos_mes:0});
+  /* ── KPIs del docente ── */
+  const [docKpis,setDocKpis]=useState({grupos:0,alumnos:0,porEval:0});
   /* ── Actividad reciente (admin/serv_escolares/coordinador) ── */
   const [actividad,setActividad]=useState([]);
   const [cupos,setCupos]=useState([]);
@@ -658,6 +660,20 @@ function Dashboard({role}){
     if(role==='alumno'&&roleId){
       sb.from('v_alumno_resumen').select('*').eq('id_alumno',roleId).single()
         .then(({data})=>{if(ok&&data)setResumen(data);});
+    } else if(role==='docente'&&roleId){
+      (async()=>{
+        const {data:gs}=await sb.from('grupos').select('id_grupo,estado').eq('id_docente',roleId);
+        const grupos=gs||[];
+        const activos=grupos.filter(g=>g.estado==='abierto'||g.estado==='lleno').length;
+        const ids=grupos.map(g=>g.id_grupo);
+        let alumnos=0,porEval=0;
+        if(ids.length>0){
+          const {count:ca}=await sb.from('inscripciones').select('*',{count:'exact',head:true}).in('id_grupo',ids).neq('estado','baja');
+          const {count:ce}=await sb.from('inscripciones').select('*',{count:'exact',head:true}).in('id_grupo',ids).eq('estado','en_curso');
+          alumnos=ca||0;porEval=ce||0;
+        }
+        if(ok) setDocKpis({grupos:activos,alumnos,porEval});
+      })();
     } else {
       sb.from('v_dashboard_kpis').select('*').single()
         .then(({data})=>{if(ok&&data)setKpis(data);});
@@ -764,9 +780,9 @@ function Dashboard({role}){
       <div className="page-enter">
         <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)'}}>
           {[
-            {glow:'var(--blue)',bg:'var(--blue-dim)',icon:<span style={{color:'var(--blue)'}}>{ic.group}</span>,val:'—',label:'Grupos activos',delta:'Ciclo 2025-A'},
-            {glow:'var(--amber)',bg:'var(--amber-dim)',icon:<span style={{color:'var(--amber)'}}>{ic.pencil}</span>,val:'—',label:'Actas pendientes',delta:'Por capturar'},
-            {glow:'var(--red)',bg:'var(--red-dim)',icon:<span style={{color:'var(--red)'}}>{ic.alert}</span>,val:'—',label:'Alumnos en riesgo',delta:'Bajo tu tutoría'},
+            {glow:'var(--blue)',bg:'var(--blue-dim)',icon:<span style={{color:'var(--blue)'}}>{ic.group}</span>,val:docKpis.grupos,label:'Grupos activos',delta:'Asignados a ti'},
+            {glow:'var(--amber)',bg:'var(--amber-dim)',icon:<span style={{color:'var(--amber)'}}>{ic.pencil}</span>,val:docKpis.alumnos,label:'Alumnos',delta:'Inscritos en tus grupos'},
+            {glow:'var(--red)',bg:'var(--red-dim)',icon:<span style={{color:'var(--red)'}}>{ic.alert}</span>,val:docKpis.porEval,label:'Inscripciones en curso',delta:'Por evaluar'},
           ].map((k,i)=>(
             <div key={i} className="kpi-card">
               <div className="kpi-glow" style={{background:k.glow}}></div>
@@ -1175,7 +1191,7 @@ function Asistencias({role}){
     if(role==='alumno'){
       sb.from('inscripciones')
         .select('id_inscripcion,grupos(clave_grupo,materias(nombre,clave)),asistencias(estado)')
-        .eq('id_alumno',roleId).in('estado',['inscrito','en_curso'])
+        .eq('id_alumno',roleId).neq('estado','baja')
         .then(({data,error})=>{
           if(!error) setMaterias(data||[]);
           setLoading(false);
@@ -1193,7 +1209,7 @@ function Asistencias({role}){
     if(!selGrupo) return;
     sb.from('inscripciones')
       .select('id_inscripcion,id_alumno,alumnos(usuarios(nombres,apellido_pat))')
-      .eq('id_grupo',parseInt(selGrupo)).in('estado',['inscrito','en_curso']).order('id_inscripcion')
+      .eq('id_grupo',parseInt(selGrupo)).neq('estado','baja').order('id_inscripcion')
       .then(({data})=>{
         const insc=data||[];
         setInscritos(insc);
@@ -1399,35 +1415,43 @@ function Constancias(){
   const [sending,setSending]=useState(null);
   const [urgente,setUrgente]=useState({});
 
+  const loadRequests=useCallback(async()=>{
+    if(!roleId) return;
+    const {data:s}=await sb.from('solicitudes_constancia').select('*,tipos_constancia(nombre)')
+      .eq('id_alumno',roleId).order('fecha_sol',{ascending:false}).limit(20);
+    if(s) setRequests(s.map(r=>({
+      id:r.id_solicitud,name:r.tipos_constancia?.nombre||'Constancia',
+      status:r.estado,date:new Date(r.fecha_sol).toLocaleDateString('es-MX',{day:'numeric',month:'short'}),
+      url:r.url_pdf,
+    })));
+  },[roleId]);
+
   useEffect(()=>{
     let ok=true;
     (async()=>{
-      const [{data:t},{data:s}]=await Promise.all([
-        sb.from('tipos_constancia').select('*').eq('activo',true).order('id_tipo'),
-        roleId
-          ?sb.from('solicitudes_constancia').select('*,tipos_constancia(nombre)').eq('id_alumno',roleId).order('fecha_sol',{ascending:false}).limit(20)
-          :{data:[]},
-      ]);
+      const {data:t}=await sb.from('tipos_constancia').select('*').eq('activo',true).order('id_tipo');
       if(!ok) return;
       if(t) setTypes(t);
-      if(s) setRequests(s.map(r=>({
-        id:r.id_solicitud,name:r.tipos_constancia?.nombre||'Constancia',
-        status:r.estado,date:new Date(r.fecha_sol).toLocaleDateString('es-MX',{day:'numeric',month:'short'}),
-        url:r.url_pdf,
-      })));
+      await loadRequests();
     })();
     return()=>{ok=false;};
-  },[roleId]);
+  },[roleId,loadRequests]);
 
   async function solicitar(tipo){
-    if(!roleId){alert('Inicia sesión como alumno para solicitar constancias.');return;}
+    if(!roleId){window.toast('Inicia sesión como alumno para solicitar constancias.','warn');return;}
     setSending(tipo.id_tipo);
     const {data,error}=await sb.rpc('solicitar_constancia',{
       p_id_alumno:roleId,p_id_tipo:tipo.id_tipo,p_urgente:!!urgente[tipo.id_tipo],
     });
     setSending(null);
-    if(error){alert('Error: '+error.message);return;}
-    setRequests(r=>[{id:Date.now(),name:tipo.nombre,status:'pendiente',date:'Hoy',url:null},...r]);
+    if(error){window.toast('Error: '+error.message,'error');return;}
+    // El RPC NO lanza error: devuelve {resultado:'OK'|'ADEUDO'|'FORBIDDEN'|'ERROR', mensaje}
+    if(data&&data.resultado&&data.resultado!=='OK'){
+      window.toast(data.mensaje||'No se pudo registrar la solicitud.','warn',5000);
+      return;
+    }
+    window.toast(data&&data.mensaje?data.mensaje:'Solicitud registrada.','ok');
+    await loadRequests();
   }
 
   const estadoChip=s=>s==='lista'||s==='lista_descarga'
@@ -2601,12 +2625,12 @@ function Grupos(){
     <div className="page-enter">
       {showNew&&(
         <Modal title="Nuevo grupo" onClose={()=>setShowNew(false)} wide>
-          <FormGrupo onSave={saveNew}/>
+          {FormGrupo({onSave:saveNew})}
         </Modal>
       )}
       {editGrupo&&(
         <Modal title="Editar grupo" onClose={()=>setEditGrupo(null)} wide>
-          <FormGrupo onSave={saveEdit}/>
+          {FormGrupo({onSave:saveEdit})}
         </Modal>
       )}
       <div style={{display:'flex',gap:10,marginBottom:16}}>

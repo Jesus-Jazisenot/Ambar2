@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const ALLOWED_ROLES = ['admin', 'serv_escolares'];
+const ALLOWED_ROLES = ['admin', 'serv_escolares', 'coordinador'];
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
